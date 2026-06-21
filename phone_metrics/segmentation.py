@@ -32,7 +32,7 @@ import numpy as np
 
 
 class PrecisionRecallMetric:
-    def __init__(self, tolerance, mode="lenient"):
+    def __init__(self, tolerance, mode="strict"):
         self.tolerance = tolerance
         self.mode = mode
         self.eps = 1e-9
