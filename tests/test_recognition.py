@@ -1,3 +1,4 @@
+import panphon.distance
 import pytest
 
 from phone_metrics.datasets import Utterance
@@ -63,6 +64,29 @@ def test_pfer_uses_panphon_for_ipa(monkeypatch):
     assert result.pfer == pytest.approx(1.5 / 4)
     assert result.macro_language_pfer == pytest.approx(1.5 / 4)
     assert result.macro_utterance_pfer == pytest.approx(1.5 / 4)
+
+
+def test_pfer_strips_silence_but_per_keeps_it():
+    utt = _utt("u1.wav", "eng", ["_", "p", "eɪ", "t", "_"])
+
+    result = phone_error_rates([utt], [["_", "p", "aɪ", "t", "_"]], label="ipa")
+
+    # PER keeps silence: 6 reference tokens, one substitution (e -> a).
+    assert result.reference_total == 6
+    assert result.per == pytest.approx(1 / 6)
+
+    # PFER strips silence from both sides, so the cost is the real feature
+    # distance over the non-silence tokens (only e -> a differs), divided by
+    # the 4 non-silence reference tokens.
+    expected_cost = panphon.distance.Distance().feature_edit_distance("paɪt", "peɪt")
+    assert expected_cost == pytest.approx(
+        panphon.distance.Distance().feature_edit_distance("a", "e")
+    )
+    assert result.pfer_reference_total == 4
+    assert result.pfer_cost == pytest.approx(expected_cost)
+    assert result.pfer == pytest.approx(expected_cost / 4)
+    assert result.macro_language_pfer == pytest.approx(expected_cost / 4)
+    assert result.macro_utterance_pfer == pytest.approx(expected_cost / 4)
 
 
 def test_raw_per_skips_pfer_by_default():
