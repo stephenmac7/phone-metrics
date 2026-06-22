@@ -35,32 +35,43 @@ def _levenshtein(a: Sequence[str], b: Sequence[str]) -> int:
 
 @dataclass(frozen=True)
 class RecognitionCounts:
-    """Aggregated edit counts for phone recognition scoring."""
+    """Aggregated edit counts for phone recognition scoring.
+
+    Two denominators are tracked. ``phone_total`` counts non-silence reference
+    tokens and is the base for PER and PFER (both ignore silence). ``token_total``
+    counts all reference tokens, including silence, and is the base for TER.
+    """
 
     per_edits: int
-    reference_total: int
+    ter_edits: int
+    phone_total: int
+    token_total: int
     utterances: int
     pfer_cost: float | None = None
-    pfer_reference_total: int = 0
 
     @property
     def per(self) -> float:
-        """Phone error rate: token edit distance over reference token count."""
-        return self.per_edits / self.reference_total
+        """Phone error rate: silence-free token edit distance over non-silence tokens."""
+        if self.phone_total == 0:
+            return 0.0
+        return self.per_edits / self.phone_total
+
+    @property
+    def ter(self) -> float:
+        """Token error rate: edit distance over all reference tokens, silence included."""
+        return self.ter_edits / self.token_total
 
     @property
     def pfer(self) -> float:
-        """Phonological feature error rate, if it was computed.
+        """Phonological feature error rate over non-silence tokens, if it was computed.
 
-        Divides by the number of non-silence reference tokens, since silence is
-        stripped before the feature distance is computed (see
-        :func:`phone_error_rates`). Returns 0.0 when there are no such tokens.
+        Returns 0.0 when there are no non-silence reference tokens.
         """
         if self.pfer_cost is None:
             raise ValueError("PFER was not computed")
-        if self.pfer_reference_total == 0:
+        if self.phone_total == 0:
             return 0.0
-        return self.pfer_cost / self.pfer_reference_total
+        return self.pfer_cost / self.phone_total
 
 
 @dataclass(frozen=True)
@@ -73,50 +84,64 @@ class PhoneErrorRates:
     """
 
     per_edits: int
-    reference_total: int
+    ter_edits: int
+    phone_total: int
+    token_total: int
     utterances: int
     per_language: dict[str, RecognitionCounts]
     per_utterance: tuple[RecognitionCounts, ...]
     pfer_cost: float | None = None
-    pfer_reference_total: int = 0
 
     @property
     def per(self) -> float:
-        """Micro PER: token edit distance over all reference tokens."""
-        return self.per_edits / self.reference_total
+        """Micro PER: silence-free edit distance over all non-silence reference tokens."""
+        if self.phone_total == 0:
+            return 0.0
+        return self.per_edits / self.phone_total
+
+    @property
+    def ter(self) -> float:
+        """Micro TER: edit distance over all reference tokens, silence included."""
+        return self.ter_edits / self.token_total
 
     @property
     def pfer(self) -> float:
         """Micro PFER: feature edit distance over all non-silence reference tokens."""
         if self.pfer_cost is None:
             raise ValueError("PFER was not computed")
-        if self.pfer_reference_total == 0:
+        if self.phone_total == 0:
             return 0.0
-        return self.pfer_cost / self.pfer_reference_total
+        return self.pfer_cost / self.phone_total
 
     @property
     def macro_language_per(self) -> float:
         """Mean of per-language PER values, unweighted by language size."""
-        return sum(counts.per for counts in self.per_language.values()) / len(
-            self.per_language
-        )
+        return sum(c.per for c in self.per_language.values()) / len(self.per_language)
+
+    @property
+    def macro_language_ter(self) -> float:
+        """Mean of per-language TER values, unweighted by language size."""
+        return sum(c.ter for c in self.per_language.values()) / len(self.per_language)
 
     @property
     def macro_language_pfer(self) -> float:
         """Mean of per-language PFER values, unweighted by language size."""
-        pfers = [counts.pfer for counts in self.per_language.values()]
-        return sum(pfers) / len(pfers)
+        return sum(c.pfer for c in self.per_language.values()) / len(self.per_language)
 
     @property
     def macro_utterance_per(self) -> float:
         """Mean of per-utterance PER values, unweighted by utterance length."""
-        return sum(counts.per for counts in self.per_utterance) / len(self.per_utterance)
+        return sum(c.per for c in self.per_utterance) / len(self.per_utterance)
+
+    @property
+    def macro_utterance_ter(self) -> float:
+        """Mean of per-utterance TER values, unweighted by utterance length."""
+        return sum(c.ter for c in self.per_utterance) / len(self.per_utterance)
 
     @property
     def macro_utterance_pfer(self) -> float:
         """Mean of per-utterance PFER values, unweighted by utterance length."""
-        pfers = [counts.pfer for counts in self.per_utterance]
-        return sum(pfers) / len(pfers)
+        return sum(c.pfer for c in self.per_utterance) / len(self.per_utterance)
 
 
 def _reference_labels(utterance: Utterance, label: str) -> list[str]:
@@ -153,10 +178,11 @@ def _aggregate(counts: Sequence[RecognitionCounts], *, compute_pfer: bool) -> Re
     )
     return RecognitionCounts(
         per_edits=sum(c.per_edits for c in counts),
-        reference_total=sum(c.reference_total for c in counts),
+        ter_edits=sum(c.ter_edits for c in counts),
+        phone_total=sum(c.phone_total for c in counts),
+        token_total=sum(c.token_total for c in counts),
         utterances=sum(c.utterances for c in counts),
         pfer_cost=pfer_cost,
-        pfer_reference_total=sum(c.pfer_reference_total for c in counts),
     )
 
 
@@ -167,23 +193,24 @@ def phone_error_rates(
     label: str = "ipa",
     pfer: bool | None = None,
 ) -> PhoneErrorRates:
-    """Score phone recognition predictions with PER and, for IPA, PFER.
+    """Score phone recognition predictions with PER, TER and, for IPA, PFER.
 
     ``predictions`` is one phone-label sequence per utterance. Its length must
     equal ``len(utterances)``. For IPA scoring, both reference and prediction
     labels are first split into their component phones, so a diphthong like
-    ``aɪ`` becomes the two tokens ``a``, ``ɪ`` for *both* PER and PFER (and
-    counts as two toward ``reference_total``); tie-barred affricates such as
+    ``aɪ`` becomes the two tokens ``a``, ``ɪ``; tie-barred affricates such as
     ``t͡ʃ`` stay a single token.
 
-    Silence labels (``"_"``) are handled differently by the two metrics. For
-    PER they are scored as ordinary tokens wherever they occur, including at the
-    edges, so PER is a plain token error rate over ``reference_total``. For PFER
-    they are stripped from both reference and prediction before the feature edit
-    distance is computed, and PFER is divided by ``pfer_reference_total`` -- the
-    count of non-silence reference tokens. (panphon would silently drop ``"_"``
-    from the cost anyway, but leaving it in the denominator would deflate PFER;
-    stripping makes the denominator match the numerator.)
+    Three rates are reported, differing in how silence (``"_"``) is treated:
+
+    * **PER** -- standard phone error rate. Silence is stripped from both
+      reference and prediction, so it affects neither the edit distance nor the
+      denominator (``phone_total``, the non-silence reference token count).
+    * **TER** -- token error rate. Silence is scored as an ordinary token
+      wherever it occurs, so both the edit distance and the denominator
+      (``token_total``, all reference tokens) include it.
+    * **PFER** -- feature error rate, computed like PER over the silence-stripped
+      sequences and divided by ``phone_total``, so it shares PER's denominator.
 
     ``label`` selects the reference labels: ``"ipa"`` for :attr:`Seg.ipa_label`
     and ``"raw"`` for :attr:`Seg.raw_label`. PFER is meaningful only for IPA,
@@ -192,9 +219,9 @@ def phone_error_rates(
 
     Note: PFER's feature edit distance is panphon's, which silently drops any
     reference segment outside its feature inventory (a genuine gap such as
-    ``ʡ``). Such a segment still counts toward ``pfer_reference_total`` but adds
-    no feature cost, so PFER gives it a free pass -- intentional, since PFER is
-    the generous, feature-level metric (PER still counts it as a full error).
+    ``ʡ``). Such a segment still counts toward ``phone_total`` but adds no
+    feature cost, so PFER gives it a free pass -- intentional, since PFER is the
+    generous, feature-level metric (PER still counts it as a full error).
     """
     if label not in ("ipa", "raw"):
         raise ValueError(f"label must be 'ipa' or 'raw', got {label!r}")
@@ -219,22 +246,21 @@ def phone_error_rates(
         if not reference:
             continue
 
-        per_edits = _levenshtein(predicted, reference)
-        # PFER strips silence from both sides: panphon drops "_" from the cost,
-        # so keeping it only in the denominator would deflate PFER.
-        pfer_ref = [tok for tok in reference if tok != SILENCE]
-        pfer_pred = [tok for tok in predicted if tok != SILENCE]
+        # PER and PFER ignore silence; TER scores it as an ordinary token.
+        ref_ns = [tok for tok in reference if tok != SILENCE]
+        pred_ns = [tok for tok in predicted if tok != SILENCE]
         pfer_cost = (
-            float(dist.feature_edit_distance("".join(pfer_pred), "".join(pfer_ref)))
+            float(dist.feature_edit_distance("".join(pred_ns), "".join(ref_ns)))
             if dist
             else None
         )
         counts = RecognitionCounts(
-            per_edits=per_edits,
-            reference_total=len(reference),
+            per_edits=_levenshtein(pred_ns, ref_ns),
+            ter_edits=_levenshtein(predicted, reference),
+            phone_total=len(ref_ns),
+            token_total=len(reference),
             utterances=1,
             pfer_cost=pfer_cost,
-            pfer_reference_total=len(pfer_ref),
         )
         per_utterance.append(counts)
         by_language.setdefault(utterance.language, []).append(counts)
@@ -250,10 +276,11 @@ def phone_error_rates(
 
     return PhoneErrorRates(
         per_edits=total.per_edits,
-        reference_total=total.reference_total,
+        ter_edits=total.ter_edits,
+        phone_total=total.phone_total,
+        token_total=total.token_total,
         utterances=total.utterances,
         pfer_cost=total.pfer_cost,
-        pfer_reference_total=total.pfer_reference_total,
         per_language=per_lang,
         per_utterance=tuple(per_utterance),
     )
