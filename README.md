@@ -1,5 +1,29 @@
 # phone-metrics
 
+## Data setup
+
+TIMIT requires no preparation; use the root of the official distribution directly.
+
+```bash
+git clone --branch main --depth 1 https://github.com/pacscilab/voxangeles.git data/voxangeles
+cd data/voxangeles/data/audited_aligned
+for file in *.zip; do
+    unzip -o "$file"
+done
+```
+
+Buckeye needs unpacking and correcting. Point the script at a directory holding the
+official `s01.zip` ... `s40.zip`; it writes the `corpus/` that `load_buckeye` reads.
+Requires `patch(1)`.
+
+```bash
+python scripts/prepare_buckeye.py ~/buckeye data/buckeye
+```
+
+The script applies the Montreal Forced Aligner project's transcription corrections, so
+segmentation numbers sit on the same utterances as the published MFA Buckeye alignment
+benchmark.
+
 ## Load evaluation data
 
 ```python
@@ -41,7 +65,7 @@ for name, utterances in datasets.items():
     print({"per": recognition.per, "pfer": recognition.pfer, "ter": recognition.ter})
 ```
 
-Predicted boundaries are seconds relative to the utterance. Read Buckeye audio using each utterance's `offset` and `duration`. `predicted_phones` contains one IPA sequence per utterance.
+Predicted boundaries are seconds relative to the utterance. Make sure to read Buckeye audio using each utterance's `offset` and `duration`. `predicted_phones` contains one IPA sequence per utterance.
 
 ## Reference
 

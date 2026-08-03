@@ -76,30 +76,22 @@ def test_read_tier_drops_rows_past_the_recording(tmp_path):
     assert [i.label for i in intervals] == ["k", "ay"]
 
 
-def test_read_tier_folds_known_malformed_line_into_the_next_interval(tmp_path):
-    """MFA skips its own unparseable lines without advancing the start time,
-    so the span is absorbed by the interval that follows it."""
-    path = _write_tier(tmp_path / "a.phones", [(0.5, "k"), (0.7, "ah n"), (0.9, "m")])
-    intervals = read_tier(path, max_time=2.0, tier="phones")
-    assert [(i.start, i.end, i.label) for i in intervals] == [
-        (0.0, 0.5, "k"),
-        (0.5, 0.9, "m"),
-    ]
+@pytest.mark.parametrize("line", ["  0.700000 999 ??", "  0.700000  122 ah n"])
+def test_read_tier_rejects_a_malformed_line(tmp_path, line):
+    """A line no pattern matches is an error, not silently swallowed audio.
 
-
-def test_read_tier_rejects_an_unknown_malformed_line(tmp_path):
-    """Anything malformed that is *not* a known corpus quirk is an error, not
-    silently swallowed audio."""
+    The distribution's own eight malformed lines are deleted by the correction
+    patch, so reaching one here means the corpus was not prepared.
+    """
     path = tmp_path / "a.phones"
-    path.write_text(_HEADER + "  0.500000  122 k\n  0.700000 999 ??\n", encoding="utf8")
+    path.write_text(_HEADER + f"  0.500000  122 k\n{line}\n", encoding="utf8")
     with pytest.raises(AssertionError, match="unparseable"):
         read_tier(path, max_time=2.0, tier="phones")
 
 
-def test_buckeye_to_ipa_handles_nasalization_and_the_plus_one_suffix():
+def test_buckeye_to_ipa_handles_nasalization():
     assert buckeye_to_ipa("ae") == "æ"
     assert buckeye_to_ipa("aen") == "æ̃"
-    assert buckeye_to_ipa("ih+1") == "ɪ"
     assert buckeye_to_ipa("tq") == "ʔ"
     assert buckeye_to_ipa("en") == "n̩"  # syllabic n, not a nasalized "e"
     # No transcription: spoken noise and the corpus' stray one-letter slips.

@@ -265,8 +265,6 @@ def load_buckeye(
             ):
                 continue
             segs = span_segments(span, aligned)
-            if not segs:
-                continue
             for seg in segs:
                 seg.ipa_label = canonical_ipa(seg.ipa_label)
             utts.append(

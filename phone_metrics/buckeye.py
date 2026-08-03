@@ -26,10 +26,11 @@ all of them MFA's:
   (``<UNKNOWN>``, ``<LAUGH>``, ``<CUTOFF>``, ...) collapses to a single
   ``spn`` interval spanning it.
 
-The distribution has a handful of malformed lines that MFA's line patterns do
-not match; MFA folds those spans into the following interval. That behaviour
-is reproduced, but only for an enumerated set of known-malformed labels — any
-other unmatched data line raises rather than silently swallowing audio.
+The distribution has eight malformed lines that MFA's line patterns do not
+match, and which MFA folds into the following interval by skipping without
+advancing its running start time. The correction patch deletes them outright,
+which comes to the same thing, so nothing here has to special-case them: any
+unmatched data line raises rather than silently swallowing audio.
 
 Reference: Pitt, M.A. et al., *Buckeye Corpus of Conversational Speech*
 (2nd release), and the corpus manual's Tables 2-4 for the label set.
@@ -237,14 +238,6 @@ LONG_UTTERANCE_SECONDS = 10.0
 _WORD_LINE = re.compile(r"^(?P<time>[0-9.]+)  ?12[123] (?P<label>[-'_\w<>}{ ?=]+);?.*$")
 _PHONE_LINE = re.compile(r"^(?P<time>[0-9.]+)  ?12[123] (?P<label>[-'_\w<>}{?=]+)(\+1n?)?( ?;.*)?$")
 
-# Data lines the patterns above do not match. MFA skips them without advancing
-# its running start time, so the span folds into the following interval; that
-# is reproduced, but only for these. "ah n" has a space inside a phone label;
-# the two word lines have a missing or doubled space around the colour field.
-_KNOWN_MALFORMED = frozenset({"ah n", "a; U; U", "it's; U; U"})
-
-_LEADING_FIELDS = re.compile(r"^[0-9.]+\s*(12[123]\s+)?")
-
 
 @dataclass(frozen=True)
 class Interval:
@@ -268,20 +261,17 @@ def wav_duration(wav_path: str | Path) -> float:
 def buckeye_to_ipa(label: str) -> str | None:
     """Map one Buckeye phone label to IPA, or ``None`` if it has no mapping.
 
-    Handles the two productive suffixes: the undocumented ``+1`` (stripped,
-    as MFA's line pattern does) and a trailing ``n`` on a vowel, which marks
-    nasalization with no separate nasal murmur (``aen`` -> ``æ̃``).
+    Handles the one productive suffix that reaches here: a trailing ``n`` on a
+    vowel, marking nasalization with no separate nasal murmur (``aen`` ->
+    ``æ̃``). The undocumented ``+1`` is consumed by :data:`_PHONE_LINE`, as it
+    is by MFA's line pattern, and so never appears in a label.
 
     ``spn`` and the stray single-character slips of
     :data:`BUCKEYE_UNLABELED` return ``None``; anything else unrecognized
     raises, so a new label in a future release is not silently dropped.
     """
-    if label == SILENCE:
-        return SILENCE
     if label == SPOKEN_NOISE or label in BUCKEYE_UNLABELED:
         return None
-    if label.endswith("+1"):
-        label = label[:-2]
     if label in BUCKEYE_TO_IPA:
         return BUCKEYE_TO_IPA[label]
     if label.endswith("n") and label[:-1] in BUCKEYE_TO_IPA:
@@ -376,12 +366,7 @@ def read_tier(path: str | Path, max_time: float, tier: str) -> list[Interval]:
         if not line:
             continue
         match = pattern.match(line)
-        if match is None:
-            remainder = _LEADING_FIELDS.sub("", line).strip()
-            assert remainder in _KNOWN_MALFORMED, f"{path}: unparseable line {line!r}"
-            # Deliberately not advancing ``begin``: the span folds into the
-            # next interval, as it does in MFA's benchmark.
-            continue
+        assert match is not None, f"{path}: unparseable line {line!r}"
         end = float(match.group("time"))
         if end > max_time:
             continue
@@ -517,8 +502,6 @@ def span_segments(span: Interval, phones: list[Interval]) -> list[Seg]:
         ipa = buckeye_to_ipa(phone.label)
         segments.append(Seg(start - span.start, end - span.start, phone.label, ipa))
         cursor = end
-    if not segments:
-        return []
     if cursor < span.end:
         segments.append(Seg(cursor - span.start, span.end - span.start, "SIL", SILENCE))
     return merge_adjacent_silence(segments)
