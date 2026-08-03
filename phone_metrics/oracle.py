@@ -121,9 +121,7 @@ def oracle_phone_accuracy(
     langs, inv = np.unique(lang, return_inverse=True)
     totals = np.bincount(inv, minlength=langs.size)
     corrects = np.bincount(inv[correct], minlength=langs.size)
-    per_language = {
-        str(lg): (int(c), int(t)) for lg, c, t in zip(langs, corrects, totals)
-    }
+    per_language = {str(lg): (int(c), int(t)) for lg, c, t in zip(langs, corrects, totals)}
     return OracleAccuracy(
         correct=int(corrects.sum()),
         total=int(totals.sum()),

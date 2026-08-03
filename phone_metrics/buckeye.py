@@ -407,9 +407,7 @@ def read_tier(path: str | Path, max_time: float, tier: str) -> list[Interval]:
     return [interval for interval in intervals if interval.label]
 
 
-def align_phones_to_words(
-    words: list[Interval], phones: list[Interval]
-) -> list[Interval]:
+def align_phones_to_words(words: list[Interval], phones: list[Interval]) -> list[Interval]:
     """Rebuild the phone tier from the words, as MFA's reference does.
 
     A phone belongs to the word its midpoint falls inside; phones covered by

@@ -150,7 +150,11 @@ def test_align_phones_to_words_drops_phones_no_word_covers():
     """Phones under dropped words -- silence, noise, interviewer speech --
     have no word to belong to."""
     words = [Interval(0.0, 0.2, "a"), Interval(1.0, 1.2, "b")]
-    phones = [Interval(0.0, 0.2, "ah"), Interval(0.4, 0.8, "iy"), Interval(1.0, 1.2, "b")]
+    phones = [
+        Interval(0.0, 0.2, "ah"),
+        Interval(0.4, 0.8, "iy"),
+        Interval(1.0, 1.2, "b"),
+    ]
     aligned = align_phones_to_words(words, phones)
     assert [i.label for i in aligned] == ["ah", "b"]
 

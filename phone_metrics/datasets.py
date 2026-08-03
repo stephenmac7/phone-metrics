@@ -145,11 +145,7 @@ def load_timit(
     utts = []
     for wav_path in wav_paths:
         phn_path = next(
-            (
-                p
-                for p in (wav_path.with_suffix(".PHN"), wav_path.with_suffix(".phn"))
-                if p.exists()
-            ),
+            (p for p in (wav_path.with_suffix(".PHN"), wav_path.with_suffix(".phn")) if p.exists()),
             None,
         )
         if phn_path is None:
@@ -193,7 +189,10 @@ def load_voxangeles(root: str | Path) -> list[Utterance]:
 
 
 def load_buckeye(
-    root: str | Path, *, speakers: Iterable[str] | None = None, keep_spoken_noise: bool = False
+    root: str | Path,
+    *,
+    speakers: Iterable[str] | None = None,
+    keep_spoken_noise: bool = False,
 ) -> list[Utterance]:
     """Load Buckeye ground-truth segmentation, cut into utterances.
 

@@ -22,3 +22,6 @@ include = ["phone_metrics*"]
 
 [tool.ruff]
 line-length = 100
+
+[tool.black]
+line-length = 100

@@ -250,9 +250,7 @@ def phone_error_rates(
         ref_ns = [tok for tok in reference if tok != SILENCE]
         pred_ns = [tok for tok in predicted if tok != SILENCE]
         pfer_cost = (
-            float(dist.feature_edit_distance("".join(pred_ns), "".join(ref_ns)))
-            if dist
-            else None
+            float(dist.feature_edit_distance("".join(pred_ns), "".join(ref_ns))) if dist else None
         )
         counts = RecognitionCounts(
             per_edits=_levenshtein(pred_ns, ref_ns),
