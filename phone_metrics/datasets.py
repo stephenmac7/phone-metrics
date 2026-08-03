@@ -19,7 +19,6 @@ into its audio file (see :class:`Utterance`).
 
 from __future__ import annotations
 
-from collections.abc import Iterable
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
@@ -40,6 +39,24 @@ from .timit import SILENCE, Seg, merge_adjacent_silence, timit_segments
 
 # VoxAngeles TextGrid labels treated as silence.
 VOX_SILENCE_LABELS = frozenset({"", "sp", "sil", "sil+"})
+
+# Speaker partitions from Kamper, Jansen, and Goldwater (2017). The primary
+# test partition is the English portion of the Zero Resource Speech Challenge
+# 2015; ``additional_test`` is their second held-out partition.
+BUCKEYE_KAMPER_SPLITS = {
+    "train": frozenset(
+        {"s02", "s03", "s04", "s05", "s06", "s08", "s10", "s11", "s12", "s13", "s16", "s38"}
+    ),
+    "val": frozenset({"s17", "s18", "s19", "s22", "s34", "s37", "s39", "s40"}),
+    "test": frozenset(
+        {"s01", "s20", "s23", "s24", "s25", "s26", "s27", "s29", "s30", "s31", "s32", "s33"}
+    ),
+    "additional_test": frozenset({"s07", "s09", "s14", "s15", "s21", "s28", "s35", "s36"}),
+}
+_BUCKEYE_KAMPER_SPEAKER_SPLITS = {
+    speaker: split for split, speakers in BUCKEYE_KAMPER_SPLITS.items() for speaker in speakers
+}
+assert len(_BUCKEYE_KAMPER_SPEAKER_SPLITS) == 40
 
 # Glyph confusables seen in the distributed transcriptions: not IPA, but a
 # look-alike of a representable phone. ASCII "g" for IPA script "ɡ"; the Cyrillic
@@ -190,8 +207,8 @@ def load_voxangeles(root: str | Path) -> list[Utterance]:
 
 def load_buckeye(
     root: str | Path,
+    split: str = "test",
     *,
-    speakers: Iterable[str] | None = None,
     keep_spoken_noise: bool = False,
 ) -> list[Utterance]:
     """Load Buckeye ground-truth segmentation, cut into utterances.
@@ -204,8 +221,11 @@ def load_buckeye(
 
     Utterances are the spans MFA's alignment benchmark cuts, so each carries
     an ``offset``/``duration`` into its ~10-minute recording and segment
-    times relative to that offset. ``speakers`` optionally restricts the load
-    to speaker ids (``"s01"``, ...), taken from the filename prefix.
+    times relative to that offset. ``split`` selects the speaker partition
+    from Kamper, Jansen, and Goldwater (2017): ``"train"``, ``"val"``,
+    ``"test"`` (the default ZeroSpeech 2015 evaluation set), or
+    ``"additional_test"``. ``"all"`` loads all four partitions while
+    retaining each utterance's actual partition in :attr:`Utterance.split`.
 
     A span that MFA marks ``spn`` — laughed-through, cut-off or
     unintelligible words — has ground-truth boundaries only at its edges
@@ -215,16 +235,24 @@ def load_buckeye(
     the ``spn`` segment is kept with ``ipa_label=None``.
     """
     root = Path(root)
+    if split == "all":
+        wanted = frozenset(_BUCKEYE_KAMPER_SPEAKER_SPLITS)
+    elif split in BUCKEYE_KAMPER_SPLITS:
+        wanted = BUCKEYE_KAMPER_SPLITS[split]
+    else:
+        raise ValueError(
+            "split must be 'train', 'val', 'test', 'additional_test', or 'all', " f"got {split!r}"
+        )
+
     wav_paths = sorted(root.glob("**/*.wav"))
-    if speakers is not None:
-        wanted = set(speakers)
-        wav_paths = [p for p in wav_paths if p.stem[:3] in wanted]
+    wav_paths = [p for p in wav_paths if p.stem[:3] in wanted]
     if not wav_paths:
-        raise FileNotFoundError(f"No Buckeye .wav files found under {root}")
+        raise FileNotFoundError(f"No Buckeye {split} .wav files found under {root}")
 
     utts = []
     for wav_path in wav_paths:
         duration = wav_duration(wav_path)
+        speaker_split = _BUCKEYE_KAMPER_SPEAKER_SPLITS[wav_path.stem[:3]]
         words = read_tier(wav_path.with_suffix(".words"), duration, "words")
         phones = read_tier(wav_path.with_suffix(".phones"), duration, "phones")
         aligned = align_phones_to_words(words, phones)
@@ -245,7 +273,7 @@ def load_buckeye(
                 Utterance(
                     str(wav_path),
                     "eng",
-                    "test",
+                    speaker_split,
                     segs,
                     offset=span.start,
                     duration=span.end - span.start,

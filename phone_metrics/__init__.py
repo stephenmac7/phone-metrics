@@ -7,6 +7,7 @@ ground-truth loaders that read TIMIT, VoxAngeles and Buckeye as distributed.
 """
 
 from .datasets import (
+    BUCKEYE_KAMPER_SPLITS,
     Utterance,
     boundary_secs,
     canonical_ipa,
@@ -20,6 +21,7 @@ from .recognition import PhoneErrorRates, RecognitionCounts, phone_error_rates
 from .segmentation import PrecisionRecallMetric
 
 __all__ = [
+    "BUCKEYE_KAMPER_SPLITS",
     "OracleAccuracy",
     "PhoneErrorRates",
     "PrecisionRecallMetric",

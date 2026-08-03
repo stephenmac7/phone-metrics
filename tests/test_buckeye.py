@@ -4,6 +4,8 @@ The fixtures are hand-written xlabel tiers rather than corpus excerpts, so
 these run without the (licensed) corpus.
 """
 
+import inspect
+
 import pytest
 
 from phone_metrics.buckeye import (
@@ -15,6 +17,7 @@ from phone_metrics.buckeye import (
     span_segments,
     utterance_spans,
 )
+from phone_metrics.datasets import BUCKEYE_KAMPER_SPLITS, load_buckeye
 
 _HEADER = "signal x.sd\ntype 0\ncolor 122\nnfields 1\n#\n"
 
@@ -24,6 +27,22 @@ def _write_tier(path, rows):
     body = "".join(f"  {end:.6f}  122 {label}\n" for end, label in rows)
     path.write_text(_HEADER + body, encoding="utf8")
     return path
+
+
+def test_kamper_splits_partition_all_buckeye_speakers():
+    all_speakers = set().union(*BUCKEYE_KAMPER_SPLITS.values())
+    assert all_speakers == {f"s{speaker:02d}" for speaker in range(1, 41)}
+    assert sum(map(len, BUCKEYE_KAMPER_SPLITS.values())) == len(all_speakers)
+    assert [len(speakers) for speakers in BUCKEYE_KAMPER_SPLITS.values()] == [12, 8, 12, 8]
+
+
+def test_load_buckeye_defaults_to_kamper_test_split():
+    assert inspect.signature(load_buckeye).parameters["split"].default == "test"
+
+
+def test_load_buckeye_rejects_unknown_split(tmp_path):
+    with pytest.raises(ValueError, match="split must be"):
+        load_buckeye(tmp_path, split="dev")
 
 
 def test_read_tier_chains_starts_and_drops_non_speech(tmp_path):
