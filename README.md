@@ -12,12 +12,12 @@ for file in *.zip; do
 done
 ```
 
-Buckeye needs unpacking and correcting. Point the script at a directory holding the
-official `s01.zip` ... `s40.zip`; it writes the `corpus/` that `load_buckeye` reads.
-Requires `patch(1)`.
+Buckeye needs unpacking and correcting. Point the script at the directory holding the
+official `s01.zip` ... `s40.zip`; it writes the `corpus/` that `load_buckeye` reads
+into that same directory. Requires `patch(1)`.
 
 ```bash
-python scripts/prepare_buckeye.py ~/buckeye data/buckeye
+python scripts/prepare_buckeye.py data/buckeye
 ```
 
 The script applies the Montreal Forced Aligner project's transcription corrections, so

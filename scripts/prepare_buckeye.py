@@ -1,6 +1,8 @@
 """Build a ``corpus/`` directory from the official Buckeye zips.
 
-    python scripts/prepare_buckeye.py ~/buckeye data/buckeye
+    python scripts/prepare_buckeye.py ~/buckeye
+
+``corpus/`` is written beside the zips, in the directory given.
 
 Buckeye ships as forty per-speaker zips of per-recording zips holding ``.wav``
 and the xlabel ``.words``/``.phones`` tiers. Before
@@ -111,8 +113,11 @@ def apply_patch(patch_path: Path, corpus_dir: Path) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    parser.add_argument("zip_dir", type=Path, help="directory holding s01.zip ... s40.zip")
-    parser.add_argument("out_dir", type=Path, help="directory to write corpus/ into")
+    parser.add_argument(
+        "zip_dir",
+        type=Path,
+        help="directory holding s01.zip ... s40.zip; corpus/ is written into it",
+    )
     parser.add_argument(
         "--patch",
         type=Path,
@@ -121,7 +126,7 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    corpus_dir = args.out_dir / "corpus"
+    corpus_dir = args.zip_dir / "corpus"
     corpus_dir.mkdir(parents=True, exist_ok=True)
 
     recordings = extract(args.zip_dir, corpus_dir)
