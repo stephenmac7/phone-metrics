@@ -1,18 +1,25 @@
-"""Ground-truth segmentation loaders for TIMIT and VoxAngeles.
+"""Ground-truth segmentation loaders for TIMIT, VoxAngeles and Buckeye.
 
-These read the datasets *as distributed* — TIMIT ``.phn`` files and VoxAngeles
-``.TextGrid`` files — rather than any pre-processed CSV copy. Each loader
-returns a list of :class:`Utterance`, whose ``boundaries`` give the
-ground-truth boundary times (seconds) for raw segmentation scoring.
+These read the datasets *as distributed* — TIMIT ``.phn`` files, VoxAngeles
+``.TextGrid`` files, Buckeye's xlabel tiers — rather than any pre-processed
+CSV copy. Each loader returns a list of :class:`Utterance`, whose
+``boundaries`` give the ground-truth boundary times (seconds) for raw
+segmentation scoring.
 
 Boundary extraction strips a single outer silence segment at each end, then
 takes the inner segment starts plus the final inner end (identical to the
-notebook's ``_boundary_secs``). TIMIT non-speech (``h#``/``pau``/``epi``) and
-VoxAngeles empty/``sp``/``sil`` intervals are normalized to the silence token.
+notebook's ``_boundary_secs``). TIMIT non-speech (``h#``/``pau``/``epi``),
+VoxAngeles empty/``sp``/``sil`` intervals and Buckeye's dropped non-speech
+spans are normalized to the silence token.
+
+TIMIT and VoxAngeles utterances are whole files; Buckeye's are spans cut out
+of ~10-minute recordings, so an utterance carries an ``offset``/``duration``
+into its audio file (see :class:`Utterance`).
 """
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
@@ -20,6 +27,15 @@ from pathlib import Path
 import numpy as np
 import panphon
 
+from .buckeye import (
+    SPOKEN_NOISE,
+    align_phones_to_words,
+    phones_in_span,
+    read_tier,
+    span_segments,
+    utterance_spans,
+    wav_duration,
+)
 from .timit import SILENCE, Seg, merge_adjacent_silence, timit_segments
 
 # VoxAngeles TextGrid labels treated as silence.
@@ -72,12 +88,22 @@ def canonical_ipa(label: str | None) -> str | None:
 
 @dataclass
 class Utterance:
-    """A single utterance's ground-truth segmentation."""
+    """A single utterance's ground-truth segmentation.
+
+    ``offset`` and ``duration`` locate the utterance inside ``audio_path``:
+    the caller is expected to score against the waveform span
+    ``[offset, offset + duration)``. Segment times — and therefore
+    ``boundaries`` — are relative to ``offset``, not to the start of the file.
+    A whole-file utterance (TIMIT, VoxAngeles) has ``offset`` 0.0 and
+    ``duration`` ``None``, meaning "to the end of the file".
+    """
 
     audio_path: str
     language: str
     split: str
     segments: list[Seg]
+    offset: float = 0.0
+    duration: float | None = None
 
     @property
     def boundaries(self) -> np.ndarray:
@@ -163,4 +189,67 @@ def load_voxangeles(root: str | Path) -> list[Utterance]:
             segs.append(Seg(float(entry.start), float(entry.end), label, ipa))
         segs = merge_adjacent_silence(segs)
         utts.append(Utterance(str(grid_path.with_suffix(".wav")), language, "test", segs))
+    return utts
+
+
+def load_buckeye(
+    root: str | Path, *, speakers: Iterable[str] | None = None, keep_spoken_noise: bool = False
+) -> list[Utterance]:
+    """Load Buckeye ground-truth segmentation, cut into utterances.
+
+    ``root`` is any directory above the corpus files — the flat ``corpus``
+    directory of the distribution, or a tree of per-speaker subdirectories.
+    The transcriptions are expected to have MFA's correction patch applied
+    (see :mod:`phone_metrics.buckeye`); unpatched files will trip the
+    malformed-line assertion.
+
+    Utterances are the spans MFA's alignment benchmark cuts, so each carries
+    an ``offset``/``duration`` into its ~10-minute recording and segment
+    times relative to that offset. ``speakers`` optionally restricts the load
+    to speaker ids (``"s01"``, ...), taken from the filename prefix.
+
+    A span that MFA marks ``spn`` — laughed-through, cut-off or
+    unintelligible words — has ground-truth boundaries only at its edges
+    while the audio inside holds several real phone transitions, which would
+    charge a segmenter with false positives it does not deserve. Those
+    utterances are dropped unless ``keep_spoken_noise`` is set, in which case
+    the ``spn`` segment is kept with ``ipa_label=None``.
+    """
+    root = Path(root)
+    wav_paths = sorted(root.glob("**/*.wav"))
+    if speakers is not None:
+        wanted = set(speakers)
+        wav_paths = [p for p in wav_paths if p.stem[:3] in wanted]
+    if not wav_paths:
+        raise FileNotFoundError(f"No Buckeye .wav files found under {root}")
+
+    utts = []
+    for wav_path in wav_paths:
+        duration = wav_duration(wav_path)
+        words = read_tier(wav_path.with_suffix(".words"), duration, "words")
+        phones = read_tier(wav_path.with_suffix(".phones"), duration, "phones")
+        aligned = align_phones_to_words(words, phones)
+        for span in utterance_spans(words, duration):
+            # Tested on the span's phones, not on the segments: an ``spn``
+            # interval another phone has truncated to nothing still marks the
+            # utterance as holding untranscribed speech.
+            if not keep_spoken_noise and any(
+                phone.label == SPOKEN_NOISE for phone in phones_in_span(span, aligned)
+            ):
+                continue
+            segs = span_segments(span, aligned)
+            if not segs:
+                continue
+            for seg in segs:
+                seg.ipa_label = canonical_ipa(seg.ipa_label)
+            utts.append(
+                Utterance(
+                    str(wav_path),
+                    "eng",
+                    "test",
+                    segs,
+                    offset=span.start,
+                    duration=span.end - span.start,
+                )
+            )
     return utts

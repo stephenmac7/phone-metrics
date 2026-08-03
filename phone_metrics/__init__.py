@@ -3,13 +3,14 @@
 Decoupled from the models that produce boundaries/labels. Provides raw
 boundary-level segmentation scoring (:class:`PrecisionRecallMetric`),
 oracle-boundary phone accuracy, PER/PFER phone recognition scoring, and
-ground-truth loaders that read TIMIT and VoxAngeles as distributed.
+ground-truth loaders that read TIMIT, VoxAngeles and Buckeye as distributed.
 """
 
 from .datasets import (
     Utterance,
     boundary_secs,
     canonical_ipa,
+    load_buckeye,
     load_timit,
     load_voxangeles,
     tokenize_ipa,
@@ -26,6 +27,7 @@ __all__ = [
     "Utterance",
     "boundary_secs",
     "canonical_ipa",
+    "load_buckeye",
     "load_timit",
     "load_voxangeles",
     "oracle_phone_accuracy",
