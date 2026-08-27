@@ -4,6 +4,7 @@
 
 TIMIT requires no preparation; use the root of the official distribution directly.
 
+Download VoxAngeles with the following:
 ```bash
 git clone --branch main --depth 1 https://github.com/pacscilab/voxangeles.git data/voxangeles
 cd data/voxangeles/data/audited_aligned
@@ -12,17 +13,16 @@ for file in *.zip; do
 done
 ```
 
-Buckeye needs unpacking and correcting. Point the script at the directory holding the
-official `s01.zip` ... `s40.zip`; it writes the `corpus/` that `load_buckeye` reads
-into that same directory. Requires `patch(1)`.
+[Buckeye](https://buckeyecorpus.osu.edu/) needs unpacking and correcting. Point the script
+at a directory holding the official `s01.zip` ... `s40.zip`; it writes the `corpus/` that
+`load_buckeye` reads.
 
 ```bash
 python scripts/prepare_buckeye.py data/buckeye
 ```
 
-The script applies the Montreal Forced Aligner project's transcription corrections, so
-segmentation numbers sit on the same utterances as the published MFA Buckeye alignment
-benchmark.
+The script applies the Montreal Forced Aligner project's
+[transcription corrections](https://mfa-models.readthedocs.io/en/latest/benchmarks/english_alignments.html).
 
 ## Load evaluation data
 
