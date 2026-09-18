@@ -1,5 +1,11 @@
 # phone-metrics
 
+## Install
+
+```bash
+pip install phone-metrics
+```
+
 ## Data setup
 
 TIMIT requires no preparation; use the root of the official distribution directly.
@@ -13,15 +19,15 @@ for file in *.zip; do
 done
 ```
 
-[Buckeye](https://buckeyecorpus.osu.edu/) needs unpacking and correcting. Point the script
+[Buckeye](https://buckeyecorpus.osu.edu/) needs unpacking and correcting. Point the command
 at a directory holding the official `s01.zip` ... `s40.zip`; it writes the `corpus/` that
 `load_buckeye` reads.
 
 ```bash
-python scripts/prepare_buckeye.py data/buckeye
+phone-metrics-prepare-buckeye data/buckeye
 ```
 
-The script applies the Montreal Forced Aligner project's
+The command applies the Montreal Forced Aligner project's
 [transcription corrections](https://mfa-models.readthedocs.io/en/latest/benchmarks/english_alignments.html).
 
 ## Load evaluation data

@@ -1,6 +1,6 @@
 """Build a ``corpus/`` directory from the official Buckeye zips.
 
-    python scripts/prepare_buckeye.py ~/buckeye
+    phone-metrics-prepare-buckeye ~/buckeye
 
 ``corpus/`` is written beside the zips, in the directory given.
 
